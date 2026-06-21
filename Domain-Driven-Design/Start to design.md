@@ -6,9 +6,13 @@ Don't think about databases, APIs, or frameworks yet. Ask:
 For Kalantar, those rules are:
 
 An incident is either active or inactive
+
 Starting an incident means it becomes active
+
 You can't start an incident that's already active (maybe)
+
 During an active incident, don't update the oncall group
+
 Those are pure business rules. They belong in the domain.
 
 How to find your domain concepts:
@@ -22,22 +26,22 @@ Chat group	update, rename
 Postmortem	create
 Now ask for each: "Is this a thing that holds state and enforces rules?" or "Is this an action that coordinates multiple things?"
 
+Holds state + enforces rules → Domain Aggregate (class)
+Example: Incident (tracks active/inactive)
 
-Holds state + enforces rules  →  Domain Aggregate (class)
-  Example: Incident (tracks active/inactive)
+Coordinates multiple things → Application Command (class)
+Example: StartIncident (calls incident.start() + notification.send() + oncall.get())
 
-Coordinates multiple things    →  Application Command (class)
-  Example: StartIncident (calls incident.start() + notification.send() + oncall.get())
+Talks to external system → Infrastructure Adapter (class)
+Example: IncidentNotificationService (wraps Teams/Element/Mattermost)
 
-Talks to external system       →  Infrastructure Adapter (class)
-  Example: IncidentNotificationService (wraps Teams/Element/Mattermost)
+Pure data, no behavior → Value Object or DTO (dataclass)
+Example: OncallMember(name, role)
 
-Pure data, no behavior         →  Value Object or DTO (dataclass)
-  Example: OncallMember(name, role)
 Step 2: Draw the Dependency Graph on Paper
 Before coding, sketch who calls whom:
 
-
+text
 User clicks "Start Incident"
        │
        ▼
@@ -70,16 +74,18 @@ Kubernetes API	KubernetesAdapter
 Why? Because you want to test your business logic without hitting real systems. The adapter is the only place that imports the external library.
 
 Rule 2: Business rule that can be stated as a sentence → Domain entity or value object
+"An incident can't be ended if it was never started" → Incident entity
 
-"An incident can't be ended if it was never started"     → Incident entity
 "A city can only be migrated if it's in the source region" → CityMigration service
-"Load shedding applies per tenant"                        → SheddingManager
+
+"Load shedding applies per tenant" → SheddingManager
+
 If you can describe the rule without mentioning any technology, it's domain.
 
 Rule 3: "Do A, then B, then C" → Application command
 When an action requires orchestrating multiple steps across different systems, that's a command:
 
-
+python
 class MigrateCities:
     """Coordinates:
     1. Validate cities are in source region      ← domain rule
@@ -90,7 +96,7 @@ class MigrateCities:
 Rule 4: "Just read some data" → Query
 Separate reads from writes:
 
-
+python
 class GetIncidentMode:
     def execute(self) -> bool:
         return self._incident.is_active
@@ -101,7 +107,7 @@ class GetSheddingConfig:
 Rule 5: If it's just data transformation → Simple function
 Not everything needs to be a class:
 
-
+python
 # This is fine as a function — no dependencies, no orchestration
 def format_oncall_display_name(member: dict) -> str:
     name = member.get("name", "")
@@ -110,7 +116,7 @@ def format_oncall_display_name(member: dict) -> str:
 Step 4: The Layer Template
 For any new feature, you create files in this structure:
 
-
+text
 app/
 ├── domain/
 │   └── <feature>/
@@ -137,24 +143,33 @@ Step 5: Concrete Example — Designing a New Feature
 Let's say you're adding "Automated Health Check" — a system that periodically checks if services are healthy and alerts when they're not.
 
 5a. Write the rules in plain English
+A health check runs every 5 minutes
 
-- A health check runs every 5 minutes
-- It checks a list of services
-- Each service is either healthy or unhealthy
-- If a service is unhealthy for 3 consecutive checks → trigger alert
-- An alert sends a notification to the SRE channel
-- During an active incident, health check alerts are suppressed
+It checks a list of services
+
+Each service is either healthy or unhealthy
+
+If a service is unhealthy for 3 consecutive checks → trigger alert
+
+An alert sends a notification to the SRE channel
+
+During an active incident, health check alerts are suppressed
+
 5b. Extract domain concepts
+Nouns: ServiceHealth, HealthCheckResult, Alert
 
-Nouns:  ServiceHealth, HealthCheckResult, Alert
-Verbs:  check, evaluate, alert, suppress
+Verbs: check, evaluate, alert, suppress
 
-Domain aggregate:  ServiceHealth (tracks consecutive failures)
-Domain port:       HealthCheckPort (abstract — "check if service X is healthy")
-Domain port:       NotificationPort (reuse existing!)
-Domain rule:       "Don't alert during active incident"
+Domain aggregate: ServiceHealth (tracks consecutive failures)
+
+Domain port: HealthCheckPort (abstract — "check if service X is healthy")
+
+Domain port: NotificationPort (reuse existing!)
+
+Domain rule: "Don't alert during active incident"
+
 5c. Sketch the layers
-
+python
 # domain/health/aggregate.py
 class ServiceHealth:
     def __init__(self, name: str):
@@ -204,7 +219,7 @@ class HttpHealthCheckAdapter(HealthCheckPort):
         response = requests.get(f"{service_url}/health", timeout=5)
         return response.status_code == 200
 5d. Wire it up in the composition root
-
+python
 # In api.py __init__:
 self.health_check_adapter = HttpHealthCheckAdapter()
 self.run_health_checks_cmd = RunHealthChecks(
