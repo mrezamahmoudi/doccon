@@ -3,7 +3,7 @@
 Don't think about databases, APIs, or frameworks yet. Ask:
 
 > "If this system had no technology at all — no HTTP, no database, no Teams — what rules would still exist?"
-
+Imagine there is a service for incident management, named Kalantar!
 For Kalantar, those rules are:
 
 - An incident is either active or inactive
